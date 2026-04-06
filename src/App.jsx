@@ -269,6 +269,7 @@ export default function App() {
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [posting, setPosting] = useState(false);
   const [commenting, setCommenting] = useState(false);
+  const [myStats, setMyStats] = useState(null);
   const swipeStart = useRef(null);
   const mouseStart = useRef(null);
 
@@ -308,6 +309,25 @@ export default function App() {
 
   const goHome = () => { setScreen("home"); setActivePost(null); setComments([]); };
   const handleHomeNav = () => { setNavTab("home"); setScreen("home"); setTab("question"); };
+
+  const handleMyPageNav = async () => {
+    setNavTab("mypage");
+    setScreen("mypage");
+    // 招待コードをAPIから毎回取得
+    try {
+      const teamData = await api("getTeam", { userId: user.userId });
+      if (!teamData.error && teamData.teamId) {
+        const updated = { ...user, teamName: teamData.teamName, inviteCode: teamData.inviteCode };
+        setUser(updated);
+        localStorage.setItem("clinote_user", JSON.stringify(updated));
+      }
+    } catch (e) { console.error(e); }
+    // スタッツ取得
+    try {
+      const stats = await api("getMyStats", { userId: user.userId });
+      if (!stats.error) setMyStats(stats);
+    } catch (e) { console.error(e); }
+  };
 
   const handleSubmitPost = async () => {
     if (!postContent.trim() || posting) return;
@@ -377,7 +397,7 @@ export default function App() {
   if (!user) return <SetupScreen onComplete={handleSetupComplete} />;
 
   return (
-    <div style={{ fontFamily: "'Hiragino Sans','Noto Sans JP',sans-serif", background: "#F8F9FB", minHeight: "100vh", maxWidth: 390, margin: "0 auto", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div style={{ fontFamily: "'Hiragino Sans','Noto Sans JP',sans-serif", background: "#F8F9FB", minHeight: "100vh", width: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
 
       <div style={{ background: "white", borderBottom: "1px solid #F0F0F0", padding: "16px 20px 12px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
         {screen === "detail" && <button onClick={goHome} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "#374151", padding: 0 }}>←</button>}
@@ -446,7 +466,7 @@ export default function App() {
               ))}
             </div>
           </div>
-          <div style={{ position: "fixed", bottom: 60, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 390, background: "white", borderTop: "1px solid #F0F0F0", padding: "10px 16px" }}>
+          <div style={{ position: "fixed", bottom: 60, left: 0, width: "100%", background: "white", borderTop: "1px solid #F0F0F0", padding: "10px 16px" }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input
                 value={commentText}
@@ -511,27 +531,63 @@ export default function App() {
 
       {screen === "mypage" && (
         <div style={{ flex: 1, padding: 16, paddingBottom: 80, overflowY: "auto" }}>
-          <div style={{ background: "white", borderRadius: 16, padding: 20, border: "1px solid #F0F0F0", marginBottom: 16, textAlign: "center" }}>
+          {/* プロフィールカード */}
+          <div style={{ background: "white", borderRadius: 16, padding: 20, border: "1px solid #F0F0F0", marginBottom: 12, textAlign: "center" }}>
             <div style={{ width: 56, height: 56, borderRadius: "50%", margin: "0 auto 12px", background: "linear-gradient(135deg,#F97316,#3B82F6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>👤</div>
             <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 16, color: "#111827" }}>{user.name}</p>
-            <p style={{ margin: "0 0 12px", fontSize: 13, color: "#9CA3AF" }}>{user.teamName || "チーム未設定"}</p>
-            {user.inviteCode && (
-              <div style={{ background: "#F8F9FB", borderRadius: 12, padding: "10px 16px", display: "inline-block" }}>
-                <p style={{ margin: "0 0 4px", fontSize: 11, color: "#9CA3AF" }}>招待コード（メンバーに共有）</p>
-                <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#111827", letterSpacing: 4 }}>{user.inviteCode}</p>
+            <p style={{ margin: "0 0 14px", fontSize: 13, color: "#9CA3AF" }}>{user.teamName || "チーム未設定"}</p>
+            <div style={{ background: "#F8F9FB", borderRadius: 12, padding: "10px 16px", display: "inline-block" }}>
+              <p style={{ margin: "0 0 4px", fontSize: 11, color: "#9CA3AF" }}>招待コード（メンバーに共有）</p>
+              <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#111827", letterSpacing: 4 }}>
+                {user.inviteCode || "読込中..."}
+              </p>
+            </div>
+          </div>
+
+          {/* 数字カード */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
+            {[
+              [myStats?.questionCount ?? "—", "疑問投稿", "#F97316"],
+              [myStats?.learningCount ?? "—", "学び投稿", "#3B82F6"],
+              [myStats?.commentCount ?? "—", "コメント", "#8B5CF6"],
+            ].map(([num, label, color]) => (
+              <div key={label} style={{ background: "white", borderRadius: 14, padding: "14px 8px", border: "1px solid #F0F0F0", textAlign: "center" }}>
+                <p style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 700, color }}>{num}</p>
+                <p style={{ margin: 0, fontSize: 11, color: "#9CA3AF" }}>{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* 7日間グラフ */}
+          <div style={{ background: "white", borderRadius: 16, padding: 16, border: "1px solid #F0F0F0", marginBottom: 12 }}>
+            <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "#111827" }}>過去7日間の投稿</p>
+            {myStats?.last7days ? (
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 56 }}>
+                {myStats.last7days.map(({ label, count, max }) => (
+                  <div key={label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                    <div style={{ width: "100%", background: count > 0 ? "#F97316" : "#F3F4F6", borderRadius: "3px 3px 0 0", height: max > 0 ? Math.max((count / max) * 44, count > 0 ? 8 : 4) : 4 }} />
+                    <span style={{ fontSize: 9, color: "#9CA3AF" }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <p style={{ fontSize: 13, color: "#9CA3AF", margin: 0 }}>読み込み中...</p>
               </div>
             )}
           </div>
+
+          {/* ログアウト */}
           <div style={{ background: "white", borderRadius: 14, border: "1px solid #F0F0F0" }}>
             <button onClick={() => { localStorage.removeItem("clinote_user"); setUser(null); }} style={{ width: "100%", padding: "14px 16px", border: "none", background: "none", cursor: "pointer", fontSize: 14, color: "#EF4444", textAlign: "left" }}>ログアウト</button>
           </div>
         </div>
       )}
 
-      {screen === "home" && <button onClick={() => setScreen("post")} style={{ position: "fixed", bottom: 76, right: "calc(50% - 195px + 16px)", width: 52, height: 52, borderRadius: "50%", background: "#111827", color: "white", border: "none", fontSize: 24, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.2)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20 }}>＋</button>}
+      {screen === "home" && <button onClick={() => setScreen("post")} style={{ position: "fixed", bottom: 76, right: 16, width: 52, height: 52, borderRadius: "50%", background: "#111827", color: "white", border: "none", fontSize: 24, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.2)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20 }}>＋</button>}
 
-      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 390, background: "white", borderTop: "1px solid #F0F0F0", display: "flex", zIndex: 30 }}>
-        {[["home","🏠","ホーム",handleHomeNav],["search","🔍","検索",()=>{setNavTab("search");setScreen("search");}],["notify","🔔","通知",()=>setNavTab("notify")],["mypage","👤","マイページ",()=>{setNavTab("mypage");setScreen("mypage");}]].map(([key,icon,label,handler])=>(
+      <div style={{ position: "fixed", bottom: 0, left: 0, width: "100%", background: "white", borderTop: "1px solid #F0F0F0", display: "flex", zIndex: 30 }}>
+        {[["home","🏠","ホーム",handleHomeNav],["search","🔍","検索",()=>{setNavTab("search");setScreen("search");}],["notify","🔔","通知",()=>setNavTab("notify")],["mypage","👤","マイページ",handleMyPageNav]].map(([key,icon,label,handler])=>(
           <button key={key} onClick={handler} style={{ flex: 1, padding: "10px 0", border: "none", background: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
             <span style={{ fontSize: 20 }}>{icon}</span>
             <span style={{ fontSize: 10, color: navTab===key?"#111827":"#9CA3AF", fontWeight: navTab===key?700:400 }}>{label}</span>
