@@ -482,7 +482,7 @@ export default function App() {
                 <SkeletonCard />
               </div>
             ) : posts.length === 0 ? (
-              <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF", fontSize: 14, lineHeight: 1.8 }}>まだ投稿がありません<br />＋から最初の投稿をしてみましょう</div>
+              <div style={{ padding: "40px 16px", color: "#9CA3AF", fontSize: 14, lineHeight: 1.8 }}>まだ投稿がありません<br />＋から最初の投稿をしてみましょう</div>
             ) : (
               <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
                 {posts.map(post => <PostCard key={post.id} post={post} onClick={() => openPost(post)} onReact={handleReact} />)}
@@ -594,7 +594,7 @@ export default function App() {
       {screen === "notify" && (
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: 80 }}>
           {notifications.length === 0 ? (
-            <div style={{ textAlign: "center", padding: 48, color: "#9CA3AF", fontSize: 14, lineHeight: 1.8 }}>
+            <div style={{ padding: "48px 16px", color: "#9CA3AF", fontSize: 14, lineHeight: 1.8 }}>
               まだ通知はありません<br />自分の投稿にコメントが来ると<br />ここに表示されます
             </div>
           ) : (
