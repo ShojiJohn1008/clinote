@@ -83,6 +83,39 @@ function ReactionBar({ reactions, postId, onReact }) {
 }
 
 // ============================================================
+// SkeletonCard（B: スケルトンスクリーン）
+// ============================================================
+function SkeletonCard() {
+  return (
+    <div style={{ background: "white", borderRadius: 16, padding: 16, border: "1px solid #F0F0F0" }}>
+      <style>{`
+        @keyframes shimmer {
+          0% { background-position: -400px 0; }
+          100% { background-position: 400px 0; }
+        }
+        .sk {
+          background: linear-gradient(90deg, #F3F4F6 25%, #E9EAEC 50%, #F3F4F6 75%);
+          background-size: 400px 100%;
+          animation: shimmer 1.4s ease-in-out infinite;
+          border-radius: 6px;
+        }
+      `}</style>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div className="sk" style={{ width: 9, height: 9, borderRadius: "50%", marginTop: 5, flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div className="sk" style={{ height: 14, width: "72%", marginBottom: 8 }} />
+          <div className="sk" style={{ height: 14, width: "55%", marginBottom: 12 }} />
+          <div style={{ display: "flex", gap: 6 }}>
+            <div className="sk" style={{ height: 24, width: 80, borderRadius: 20 }} />
+            <div className="sk" style={{ height: 24, width: 80, borderRadius: 20 }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // PostCard
 // ============================================================
 function PostCard({ post, onClick, onReact }) {
@@ -235,6 +268,7 @@ export default function App() {
   const [postContent, setPostContent] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [posting, setPosting] = useState(false);
+  const [commenting, setCommenting] = useState(false);
   const swipeStart = useRef(null);
   const mouseStart = useRef(null);
 
@@ -299,7 +333,8 @@ export default function App() {
   };
 
   const handleSubmitComment = async () => {
-    if (!commentText.trim() || !activePost) return;
+    if (!commentText.trim() || !activePost || commenting) return;
+    setCommenting(true);
     try {
       const data = await api("createComment", { postId: activePost.id, content: commentText.trim(), userId: user.userId });
       if (data.error) throw new Error(data.error);
@@ -307,6 +342,7 @@ export default function App() {
       setCommentText("");
       setPosts(prev => prev.map(p => p.id === activePost.id ? { ...p, commentCount: (p.commentCount || 0) + 1 } : p));
     } catch (e) { alert("コメントに失敗しました: " + e.message); }
+    setCommenting(false);
   };
 
   const handleReact = async (postId, emoji, adding) => {
@@ -367,7 +403,11 @@ export default function App() {
           </div>
           <div style={{ flex: 1, overflowY: "auto", paddingBottom: 80, userSelect: "none" }} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp}>
             {loading ? (
-              <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF", fontSize: 14 }}>読み込み中...</div>
+              <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </div>
             ) : posts.length === 0 ? (
               <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF", fontSize: 14, lineHeight: 1.8 }}>まだ投稿がありません<br />＋から最初の投稿をしてみましょう</div>
             ) : (
@@ -408,8 +448,20 @@ export default function App() {
           </div>
           <div style={{ position: "fixed", bottom: 60, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 390, background: "white", borderTop: "1px solid #F0F0F0", padding: "10px 16px" }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input value={commentText} onChange={e => setCommentText(e.target.value)} placeholder="返信を入力..." style={{ flex: 1, border: "1px solid #E5E7EB", borderRadius: 20, padding: "10px 14px", fontSize: 14, outline: "none", background: "#F9FAFB", fontFamily: "inherit" }} />
-              <button onClick={handleSubmitComment} disabled={!commentText.trim()} style={{ background: commentText.trim() ? "#111827" : "#E5E7EB", color: commentText.trim() ? "white" : "#9CA3AF", border: "none", borderRadius: 20, padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>送信</button>
+              <input
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                placeholder={commenting ? "送信中..." : "返信を入力..."}
+                disabled={commenting}
+                style={{ flex: 1, border: "1px solid #E5E7EB", borderRadius: 20, padding: "10px 14px", fontSize: 14, outline: "none", background: commenting ? "#F3F4F6" : "#F9FAFB", fontFamily: "inherit", opacity: commenting ? 0.6 : 1, transition: "opacity .15s" }}
+              />
+              <button
+                onClick={handleSubmitComment}
+                disabled={!commentText.trim() || commenting}
+                style={{ background: commenting ? "#6B7280" : commentText.trim() ? "#111827" : "#E5E7EB", color: commentText.trim() || commenting ? "white" : "#9CA3AF", border: "none", borderRadius: 20, padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: commenting ? "not-allowed" : "pointer", minWidth: 72, transition: "background .15s" }}
+              >
+                {commenting ? "送信中..." : "送信"}
+              </button>
             </div>
           </div>
         </div>
