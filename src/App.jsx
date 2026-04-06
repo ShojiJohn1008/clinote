@@ -270,6 +270,8 @@ export default function App() {
   const [posting, setPosting] = useState(false);
   const [commenting, setCommenting] = useState(false);
   const [myStats, setMyStats] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const swipeStart = useRef(null);
   const mouseStart = useRef(null);
 
@@ -310,10 +312,21 @@ export default function App() {
   const goHome = () => { setScreen("home"); setActivePost(null); setComments([]); };
   const handleHomeNav = () => { setNavTab("home"); setScreen("home"); setTab("question"); };
 
+  // 起動時に未読数を取得
+  useEffect(() => {
+    if (!user?.userId) return;
+    api("getNotifications", { userId: user.userId })
+      .then(data => {
+        if (!data.error) {
+          const unread = (data.notifications || []).filter(n => !n.isRead).length;
+          setUnreadCount(unread);
+        }
+      }).catch(() => {});
+  }, [user]);
+
   const handleMyPageNav = async () => {
     setNavTab("mypage");
     setScreen("mypage");
-    // 招待コードをAPIから毎回取得
     try {
       const teamData = await api("getTeam", { userId: user.userId });
       if (!teamData.error && teamData.teamId) {
@@ -322,11 +335,49 @@ export default function App() {
         localStorage.setItem("clinote_user", JSON.stringify(updated));
       }
     } catch (e) { console.error(e); }
-    // スタッツ取得
     try {
       const stats = await api("getMyStats", { userId: user.userId });
       if (!stats.error) setMyStats(stats);
     } catch (e) { console.error(e); }
+  };
+
+  const fetchNotifications = useCallback(async () => {
+    if (!user?.userId) return;
+    try {
+      const data = await api("getNotifications", { userId: user.userId });
+      if (!data.error) {
+        setNotifications(data.notifications || []);
+        setUnreadCount((data.notifications || []).filter(n => !n.isRead).length);
+      }
+    } catch (e) { console.error(e); }
+  }, [user]);
+
+  // 起動時・定期的に通知取得
+  useEffect(() => {
+    if (user?.userId) fetchNotifications();
+    const interval = setInterval(() => { if (user?.userId) fetchNotifications(); }, 60000);
+    return () => clearInterval(interval);
+  }, [user, fetchNotifications]);
+
+  const handleNotifyNav = async () => {
+    setNavTab("notify");
+    setScreen("notify");
+    await fetchNotifications();
+    // 既読にする
+    try {
+      await api("markNotificationsRead", { userId: user.userId });
+      setUnreadCount(0);
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    } catch (e) { console.error(e); }
+  };
+
+  const handleUpdatePostStatus = async (postId, newStatus) => {
+    try {
+      await api("updatePostStatus", { postId, status: newStatus, userId: user.userId });
+      // ローカルのstateも更新
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, status: newStatus } : p));
+      if (activePost?.id === postId) setActivePost(prev => ({ ...prev, status: newStatus }));
+    } catch (e) { alert("ステータスの更新に失敗しました"); }
   };
 
   const handleSubmitPost = async () => {
@@ -407,6 +458,8 @@ export default function App() {
           {screen === "detail" && <span style={{ fontWeight: 600, fontSize: 16, color: "#111827" }}>投稿の詳細</span>}
           {screen === "post" && <span style={{ fontWeight: 600, fontSize: 16, color: "#111827", display: "block", textAlign: "center" }}>新しい投稿</span>}
           {screen === "search" && <span style={{ fontWeight: 600, fontSize: 16, color: "#111827" }}>検索</span>}
+          {screen === "notify" && <span style={{ fontWeight: 600, fontSize: 16, color: "#111827" }}>通知</span>}
+          {screen === "notify" && <span style={{ fontWeight: 600, fontSize: 16, color: "#111827" }}>通知</span>}
           {screen === "mypage" && <span style={{ fontWeight: 600, fontSize: 16, color: "#111827" }}>マイページ</span>}
         </div>
         {screen === "post" && <button onClick={handleSubmitPost} disabled={!postContent.trim() || posting} style={{ background: postContent.trim() ? "#111827" : "#E5E7EB", color: postContent.trim() ? "white" : "#9CA3AF", border: "none", borderRadius: 20, padding: "6px 16px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>{posting ? "投稿中..." : "投稿する"}</button>}
@@ -444,9 +497,28 @@ export default function App() {
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: 120 }}>
           <div style={{ padding: 16 }}>
             <div style={{ background: "white", borderRadius: 16, padding: 16, border: "1px solid #F0F0F0", marginBottom: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                <div style={{ width: 9, height: 9, borderRadius: "50%", background: statusConfig[activePost.status]?.color }} />
-                <span style={{ fontSize: 11, fontWeight: 600, color: statusConfig[activePost.status]?.color, background: statusConfig[activePost.status]?.bg, border: `1px solid ${statusConfig[activePost.status]?.border}`, padding: "2px 8px", borderRadius: 20 }}>{statusConfig[activePost.status]?.label}</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 9, height: 9, borderRadius: "50%", background: statusConfig[activePost.status]?.color }} />
+                  <span style={{ fontSize: 11, fontWeight: 600, color: statusConfig[activePost.status]?.color, background: statusConfig[activePost.status]?.bg, border: `1px solid ${statusConfig[activePost.status]?.border}`, padding: "2px 8px", borderRadius: 20 }}>{statusConfig[activePost.status]?.label}</span>
+                </div>
+                {/* 自分の投稿 かつ 未解決なら解決ボタンを表示 */}
+                {activePost.isOwner && activePost.status !== "line" && (
+                  <button onClick={async () => {
+                    try {
+                      const data = await api("updatePostStatus", { postId: activePost.id, status: "line", userId: user.userId });
+                      if (!data.error) {
+                        setActivePost(prev => ({ ...prev, status: "line" }));
+                        setPosts(prev => prev.map(p => p.id === activePost.id ? { ...p, status: "line" } : p));
+                      }
+                    } catch (e) { console.error(e); }
+                  }} style={{ fontSize: 12, fontWeight: 600, color: "#3B82F6", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 20, padding: "4px 12px", cursor: "pointer" }}>
+                    解決済みにする ✓
+                  </button>
+                )}
+                {activePost.isOwner && activePost.status === "line" && (
+                  <span style={{ fontSize: 12, color: "#3B82F6", fontWeight: 600 }}>✓ 解決済み</span>
+                )}
               </div>
               <p style={{ margin: "0 0 12px", fontSize: 15, lineHeight: 1.7, color: "#1F2937", wordBreak: "break-all", overflowWrap: "break-word" }}>{activePost.content}</p>
               <div style={{ marginBottom: 12 }}><ReactionBar reactions={activePost.reactions || {}} postId={activePost.id} onReact={handleReact} /></div>
@@ -519,6 +591,43 @@ export default function App() {
         </div>
       )}
 
+      {screen === "notify" && (
+        <div style={{ flex: 1, overflowY: "auto", paddingBottom: 80 }}>
+          {notifications.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 48, color: "#9CA3AF", fontSize: 14, lineHeight: 1.8 }}>
+              まだ通知はありません<br />自分の投稿にコメントが来ると<br />ここに表示されます
+            </div>
+          ) : (
+            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+              {notifications.map(n => (
+                <div key={n.id} onClick={async () => {
+                  // 該当投稿を探して詳細画面へ
+                  try {
+                    const data = await api("getPosts", { userId: user.userId });
+                    const post = (data.posts || []).find(p => p.id === n.postId);
+                    if (post) openPost(post);
+                  } catch (e) { console.error(e); }
+                }} style={{ background: n.isRead ? "white" : "#EFF6FF", borderRadius: 14, padding: 14, border: `1px solid ${n.isRead ? "#F0F0F0" : "#BFDBFE"}`, cursor: "pointer" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#667eea,#764ba2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "white", fontWeight: 600, flexShrink: 0 }}>
+                      {n.commenterName[0]}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: "0 0 4px", fontSize: 14, color: "#111827", fontWeight: n.isRead ? 400 : 600 }}>
+                        {n.commenterName}さんがコメントしました
+                      </p>
+                      <p style={{ margin: "0 0 4px", fontSize: 13, color: "#6B7280" }}>「{n.postExcerpt}」</p>
+                      <p style={{ margin: 0, fontSize: 11, color: "#9CA3AF" }}>{formatTime(n.createdAt)}</p>
+                    </div>
+                    {!n.isRead && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#3B82F6", marginTop: 4, flexShrink: 0 }} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {screen === "search" && (
         <div style={{ flex: 1, padding: 16 }}>
           <div style={{ background: "white", borderRadius: 14, border: "1px solid #F0F0F0", display: "flex", alignItems: "center", gap: 10, padding: "12px 16px" }}>
@@ -587,9 +696,16 @@ export default function App() {
       {screen === "home" && <button onClick={() => setScreen("post")} style={{ position: "fixed", bottom: 76, right: 16, width: 52, height: 52, borderRadius: "50%", background: "#111827", color: "white", border: "none", fontSize: 24, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.2)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20 }}>＋</button>}
 
       <div style={{ position: "fixed", bottom: 0, left: 0, width: "100%", background: "white", borderTop: "1px solid #F0F0F0", display: "flex", zIndex: 30 }}>
-        {[["home","🏠","ホーム",handleHomeNav],["search","🔍","検索",()=>{setNavTab("search");setScreen("search");}],["notify","🔔","通知",()=>setNavTab("notify")],["mypage","👤","マイページ",handleMyPageNav]].map(([key,icon,label,handler])=>(
+        {[["home","🏠","ホーム",handleHomeNav],["search","🔍","検索",()=>{setNavTab("search");setScreen("search");}],["notify","🔔","通知",handleNotifyNav],["mypage","👤","マイページ",handleMyPageNav]].map(([key,icon,label,handler])=>(
           <button key={key} onClick={handler} style={{ flex: 1, padding: "10px 0", border: "none", background: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-            <span style={{ fontSize: 20 }}>{icon}</span>
+            <div style={{ position: "relative" }}>
+              <span style={{ fontSize: 20 }}>{icon}</span>
+              {key === "notify" && unreadCount > 0 && (
+                <div style={{ position: "absolute", top: -2, right: -6, minWidth: 16, height: 16, background: "#EF4444", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+                  <span style={{ fontSize: 10, color: "white", fontWeight: 700 }}>{unreadCount > 9 ? "9+" : unreadCount}</span>
+                </div>
+              )}
+            </div>
             <span style={{ fontSize: 10, color: navTab===key?"#111827":"#9CA3AF", fontWeight: navTab===key?700:400 }}>{label}</span>
           </button>
         ))}
